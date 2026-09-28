@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Saída de Mercadoria - Picking & Loja</title>
+  
+  <!-- Configurações PWA Android -->
+  <meta name="theme-color" content="#0f172a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" id="manifestPlaceholder">
+
+  <!-- Tailwind CSS & FontAwesome -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Biblioteca de Leitura de Código de Barras via Câmera -->
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+  <style>
+    body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
+    .glass { background: rgba(30, 41, 59, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+    #reader video { border-radius: 0.75rem; object-fit: cover; }
+  </style>
+</head>
+<body class="min-h-screen pb-12 select-none">
+
+  <!-- Cabeçalho -->
+  <header class="glass sticky top-0 z-40 p-4 mb-4 shadow-lg border-b border-slate-700">
+    <div class="max-w-7xl mx-auto flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <div class="p-2.5 bg-blue-600 rounded-xl text-white shadow-md">
+          <i class="fa-solid fa-boxes-packing text-xl"></i>
+        </div>
+        <div>
+          <h1 class="text-base font-bold text-white leading-tight">Saída de Mercadoria</h1>
+          <p class="text-[11px] text-slate-400">Picking & Abastecimento Loja</p>
+        </div>
+      </div>
+      
+      <div class="flex items-center gap-2">
+        <button onclick="exportarExcel()" class="bg-emerald-600 active:bg-emerald-700 text-white p-2.5 rounded-xl font-medium text-xs flex items-center gap-1.5 shadow-md">
+          <i class="fa-solid fa-file-excel text-sm"></i>
+          <span class="hidden sm:inline">Exportar</span>
+        </button>
+        <button onclick="limparRegistros()" class="bg-rose-600/20 active:bg-rose-600/40 text-rose-300 border border-rose-500/30 p-2.5 rounded-xl text-xs">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-3 grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+    <!-- Seção de Form / Scanner -->
+    <section class="lg:col-span-5">
+      <div class="glass p-4 rounded-2xl shadow-xl border border-slate-700/80">
+        
+        <div class="flex justify-between items-center mb-3">
+          <h2 class="text-sm font-bold text-blue-400 flex items-center gap-2">
+            <i class="fa-solid fa-barcode"></i> Lançamento de Saída
+          </h2>
+          <!-- Botão para acionar Câmera do Android -->
+          <button type="button" onclick="alternarCamera()" class="bg-blue-600/20 text-blue-300 border border-blue-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition">
+            <i class="fa-solid fa-camera"></i> <span id="btnCamText">Ler Câmera</span>
+          </button>
+        </div>
+
+        <!-- Área do Leitor de Câmera (Oculta por padrão) -->
+        <div id="scannerContainer" class="hidden mb-4 p-2 bg-slate-900/90 rounded-xl border border-blue-500/40">
+          <div id="reader" class="w-full"></div>
+          <p class="text-[10px] text-center text-slate-400 mt-1">Aproxime o código de barras da câmera</p>
+        </div>
+
+        <form id="formSaida" onsubmit="salvarRegistro(event)" class="space-y-3">
+          <!-- Código EAN / Referência -->
+          <div>
+            <label class="block text-[11px] font-medium text-slate-300 mb-1">Código EAN / Referência *</label>
+            <input type="text" id="codigo" required autofocus autocomplete="off" placeholder="Bipe ou digite o código..." 
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-sm">
+          </div>
+
+          <!-- Descrição do Produto -->
+          <div>
+            <label class="block text-[11px] font-medium text-slate-300 mb-1">Descrição do Produto *</label>
+            <input type="text" id="descricao" required placeholder="Ex: Dipirona 500mg c/ 20 cprs" 
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-sm">
+          </div>
+
+          <!-- Destino -->
+          <div>
+            <label class="block text-[11px] font-medium text-slate-300 mb-1">Destino da Saída *</label>
+            <select id="destino" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-blue-500 text-sm">
+              <option value="Loja - Abastecimento">🏪 Loja - Abastecimento de Gôndola</option>
+              <option value="Loja - Pedido Expresso">⚡ Loja - Pedido Expresso / Balcão</option>
+              <option value="Picking - Transferência Interna">📦 Picking - Baixa para Separação</option>
+              <option value="Ajuste / Ocorrência">⚠️ Ajuste / Ocorrência de Estoque</option>
+            </select>
+          </div>
+
+          <!-- Quantidade e Lote -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-medium text-slate-300 mb-1">Qtd. Solicitada *</label>
+              <input type="number" id="quantidade" min="1" required value="1" 
+                class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-blue-500 font-bold text-center text-base">
+            </div>
+            <div>
+              <label class="block text-[11px] font-medium text-slate-300 mb-1">Lote / Validade</label>
+              <input type="text" id="lote" placeholder="Ex: L1234" 
+                class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-sm uppercase">
+            </div>
+          </div>
+
+          <!-- Operador -->
+          <div>
+            <label class="block text-[11px] font-medium text-slate-300 mb-1">Operador / Separador *</label>
+            <input type="text" id="operador" required placeholder="Nome do operador" 
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-sm">
+          </div>
+
+          <!-- Botão Registrar -->
+          <button type="submit" class="w-full bg-blue-600 active:bg-blue-700 text-white font-semibold py-3 rounded-xl transition shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 text-sm mt-2">
+            <i class="fa-solid fa-check-circle"></i> Confirmar Saída
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Resumo e Histórico -->
+    <section class="lg:col-span-7 space-y-4">
+
+      <!-- Contadores -->
+      <div class="grid grid-cols-3 gap-2">
+        <div class="glass p-3 rounded-xl border border-slate-700 text-center">
+          <p class="text-[10px] text-slate-400 font-medium">Total Hoje</p>
+          <p id="totalRegistros" class="text-xl font-bold text-white mt-0.5">0</p>
+        </div>
+        <div class="glass p-3 rounded-xl border border-slate-700 text-center">
+          <p class="text-[10px] text-slate-400 font-medium">Enviado Loja</p>
+          <p id="totalLoja" class="text-xl font-bold text-emerald-400 mt-0.5">0</p>
+        </div>
+        <div class="glass p-3 rounded-xl border border-slate-700 text-center">
+          <p class="text-[10px] text-slate-400 font-medium">Baixa Picking</p>
+          <p id="totalPicking" class="text-xl font-bold text-blue-400 mt-0.5">0</p>
+        </div>
+      </div>
+
+      <!-- Tabela / Lista Mobile -->
+      <div class="glass rounded-2xl p-4 border border-slate-700 shadow-xl">
+        <div class="flex justify-between items-center mb-3 gap-2">
+          <h3 class="text-xs font-bold text-slate-200">Últimas Movimentações</h3>
+          <input type="text" id="filtroTabela" onkeyup="filtrarTabela()" placeholder="Buscar..." 
+            class="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none w-36">
+        </div>
+
+        <div class="overflow-x-auto max-h-[380px] overflow-y-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead class="sticky top-0 bg-slate-800 text-slate-400 uppercase text-[10px]">
+              <tr>
+                <th class="py-2 px-2">Hora</th>
+                <th class="py-2 px-2">Produto / EAN</th>
+                <th class="py-2 px-2 text-center">Qtd</th>
+                <th class="py-2 px-2">Destino</th>
+                <th class="py-2 px-2 text-right">Ação</th>
+              </tr>
+            </thead>
+            <tbody id="tabelaCorpo" class="divide-y divide-slate-800/60">
+              <!-- Gerado via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // 1. Gerador Automático de Manifest PWA
+    const manifestData = {
+      name: "Saída de Mercadoria",
+      short_name: "Saída Picking",
+      start_url: ".",
+      display: "standalone",
+      background_color: "#0f172a",
+      theme_color: "#0f172a",
+      icons: [{ src: "https://cdn-icons-png.flaticon.com/512/3081/3081559.png", sizes: "512x512", type: "image/png" }]
+    };
+    const stringManifest = JSON.stringify(manifestData);
+    const blobManifest = new Blob([stringManifest], {type: 'application/json'});
+    document.getElementById('manifestPlaceholder').setAttribute('href', URL.createObjectURL(blobManifest));
+
+    // 2. Banco de Dados IndexedDB Local
+    let db;
+    const request = indexedDB.open("ControlePickingDB", 1);
+
+    request.onupgradeneeded = function(e) {
+      db = e.target.result;
+      if (!db.objectStoreNames.contains("saidas")) {
+        db.createObjectStore("saidas", { keyPath: "id", autoIncrement: true });
+      }
+    };
+
+    request.onsuccess = function(e) {
+      db = e.target.result;
+      carregarRegistros();
+    };
+
+    // 3. Suporte a Leitor de Câmera Html5Qrcode
+    let html5QrCode = null;
+    let cameraAtiva = false;
+
+    function alternarCamera() {
+      const container = document.getElementById("scannerContainer");
+      const btnText = document.getElementById("btnCamText");
+
+      if (cameraAtiva) {
+        html5QrCode.stop().then(() => {
+          container.classList.add("hidden");
+          btnText.innerText = "Ler Câmera";
+          cameraAtiva = false;
+        });
+      } else {
+        container.classList.remove("hidden");
+        btnText.innerText = "Fechar Câmera";
+        html5QrCode = new Html5Qrcode("reader");
+        
+        html5QrCode.start(
+          { facingMode: "environment" }, 
+          { fps: 15, qrbox: { width: 250, height: 120 } },
+          (decodedText) => {
+            document.getElementById("codigo").value = decodedText;
+            // Toca efeito sonoro leve ao bipar
+            let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            let osc = audioCtx.createOscillator();
+            osc.connect(audioCtx.destination);
+            osc.frequency.value = 1000;
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
+            
+            alternarCamera(); // Fecha a câmera após a leitura
+            document.getElementById("descricao").focus();
+          },
+          (errorMessage) => {}
+        ).catch(err => alert("Erro ao acessar câmera Android: " + err));
+        
+        cameraAtiva = true;
+      }
+    }
+
+    // 4. Salvar e Gerenciar Registros
+    function salvarRegistro(e) {
+      e.preventDefault();
+
+      const registro = {
+        dataHora: new Date().toISOString(),
+        dataFormatada: new Date().toLocaleTimeString("pt-BR", { hour: '2-digit', minute: '2-digit' }),
+        codigo: document.getElementById("codigo").value.trim(),
+        descricao: document.getElementById("descricao").value.trim(),
+        destino: document.getElementById("destino").value,
+        quantidade: parseInt(document.getElementById("quantidade").value),
+        lote: document.getElementById("lote").value.trim().toUpperCase() || "N/A",
+        operador: document.getElementById("operador").value.trim()
+      };
+
+      const tx = db.transaction(["saidas"], "readwrite");
+      tx.objectStore("saidas").add(registro);
+
+      tx.oncomplete = function() {
+        document.getElementById("formSaida").reset();
+        document.getElementById("codigo").focus();
+        carregarRegistros();
+      };
+    }
+
+    function carregarRegistros() {
+      const tx = db.transaction(["saidas"], "readonly");
+      const request = tx.objectStore("saidas").getAll();
+
+      request.onsuccess = function() {
+        const dados = request.result.reverse();
+        const tabela = document.getElementById("tabelaCorpo");
+        tabela.innerHTML = "";
+
+        let totalGeral = 0, totalLoja = 0, totalPicking = 0;
+
+        dados.forEach(item => {
+          totalGeral += item.quantidade;
+          if (item.destino.includes("Loja")) totalLoja += item.quantidade;
+          if (item.destino.includes("Picking")) totalPicking += item.quantidade;
+
+          const tr = document.createElement("tr");
+          tr.className = "hover:bg-slate-800/40 text-slate-300";
+          tr.innerHTML = `
+            <td class="py-2 px-2 text-slate-400 font-mono text-[11px]">${item.dataFormatada}</td>
+            <td class="py-2 px-2">
+              <div class="font-semibold text-white leading-tight">${item.descricao}</div>
+              <div class="text-[10px] text-slate-500 font-mono">${item.codigo}</div>
+            </td>
+            <td class="py-2 px-2 text-center font-bold text-white text-sm">${item.quantidade}</td>
+            <td class="py-2 px-2">
+              <span class="text-[10px] font-medium ${item.destino.includes('Loja') ? 'text-emerald-400' : 'text-blue-400'}">
+                ${item.destino.split('-')[0]}
+              </span>
+            </td>
+            <td class="py-2 px-2 text-right">
+              <button onclick="deletarRegistro(${item.id})" class="text-rose-400 p-1"><i class="fa-solid fa-xmark"></i></button>
+            </td>
+          `;
+          tabela.appendChild(tr);
+        });
+
+        document.getElementById("totalRegistros").innerText = totalGeral;
+        document.getElementById("totalLoja").innerText = totalLoja;
+        document.getElementById("totalPicking").innerText = totalPicking;
+      };
+    }
+
+    function deletarRegistro(id) {
+      if (confirm("Remover este registro?")) {
+        const tx = db.transaction(["saidas"], "readwrite");
+        tx.objectStore("saidas").delete(id);
+        tx.oncomplete = () => carregarRegistros();
+      }
+    }
+
+    function limparRegistros() {
+      if (confirm("Atenção: Apagar todo o histórico salvo no celular?")) {
+        const tx = db.transaction(["saidas"], "readwrite");
+        tx.objectStore("saidas").clear();
+        tx.oncomplete = () => carregarRegistros();
+      }
+    }
+
+    function filtrarTabela() {
+      const termo = document.getElementById("filtroTabela").value.toLowerCase();
+      document.querySelectorAll("#tabelaCorpo tr").forEach(linha => {
+        linha.style.display = linha.innerText.toLowerCase().includes(termo) ? "" : "none";
+      });
+    }
+
+    function exportarExcel() {
+      const tx = db.transaction(["saidas"], "readonly");
+      tx.objectStore("saidas").getAll().onsuccess = function(e) {
+        const dados = e.target.result;
+        if (!dados.length) return alert("Sem dados para exportar!");
+
+        let csv = "\uFEFFHora;EAN;Produto;Destino;Qtd;Lote;Operador\n";
+        dados.forEach(i => {
+          csv += `"${i.dataFormatada}";"${i.codigo}";"${i.descricao}";"${i.destino}";${i.quantidade};"${i.lote}";"${i.operador}"\n`;
+        });
+
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `saidas_picking_${new Date().toISOString().slice(0,10)}.csv`;
+        link.click();
+      };
+    }
+  </script>
+</body>
+</html>
