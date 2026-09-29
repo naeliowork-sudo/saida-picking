@@ -79,6 +79,7 @@
             <label class="block text-[11px] font-medium text-slate-300 mb-1">Código EAN / Referência *</label>
             <input type="text" id="codigo" required autofocus autocomplete="off" placeholder="Bipe ou digite o código..." 
               oninput="buscarProdutoPorCodigo()"
+              onchange="buscarProdutoPorCodigo()"
               class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-sm">
           </div>
 
@@ -177,14 +178,10 @@
 
   </main>
 
-  <script>
-    // Base de produtos opcional para auto-preenchimento por EAN
-    const BD_PRODUTOS = {
-      "7891010101010": "DIPIRONA SODICA 500MG C/20 CPR",
-      "7892020202020": "PARACETAMOL 750MG C/20 CPR",
-      "7893030303030": "NEOSALDINA C/30 DRG"
-    };
+  <!-- Carrega a base real da planilha do Excel -->
+  <script src="produtos_bd.js"></script>
 
+  <script>
     // 1. Gerador Automático de Manifest PWA
     const manifestData = {
       name: "Saída de Mercadoria",
@@ -210,7 +207,7 @@
       if (destSalvo) document.getElementById("destino").value = destSalvo;
     });
 
-    // 2. Banco de Dados IndexedDB Local
+    // 2. Banco de Dados IndexedDB Local para o Histórico de Saídas
     let db;
     const request = indexedDB.open("ControlePickingDB", 1);
 
@@ -226,10 +223,14 @@
       carregarRegistros();
     };
 
+    // Função de Busca Instantânea de Produtos
     function buscarProdutoPorCodigo() {
-      const cod = document.getElementById("codigo").value.trim();
-      if (BD_PRODUTOS[cod]) {
-        document.getElementById("descricao").value = BD_PRODUTOS[cod];
+      const inputCod = document.getElementById("codigo");
+      const cod = inputCod.value.trim();
+      const inputDesc = document.getElementById("descricao");
+
+      if (typeof BD_PRODUTOS !== 'undefined' && BD_PRODUTOS[cod]) {
+        inputDesc.value = BD_PRODUTOS[cod];
       }
     }
 
@@ -290,7 +291,6 @@
       const operadorNome = document.getElementById("operador").value.trim();
       const destinoVal = document.getElementById("destino").value;
 
-      // Persiste o operador e destino para não precisar regravar
       localStorage.setItem("ultimoOperador", operadorNome);
       localStorage.setItem("ultimoDestino", destinoVal);
 
