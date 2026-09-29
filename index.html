@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#0f172a">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="manifest" href="manifest.json">
+  <link id="manifestPlaceholder" rel="manifest">
 
   <!-- Tailwind CSS & FontAwesome -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -44,7 +44,7 @@
           <i class="fa-solid fa-file-excel text-sm"></i>
           <span class="hidden sm:inline">Exportar</span>
         </button>
-        <button onclick="limparRegistros()" class="bg-rose-600/20 active:bg-rose-600/40 text-rose-300 border border-rose-500/30 p-2.5 rounded-xl text-xs">
+        <button onclick="limparRegistros()" class="bg-rose-600/20 active:bg-rose-600/40 text-rose-300 border border-rose-500/30 p-2.5 rounded-xl text-xs" title="Limpar Tudo">
           <i class="fa-solid fa-trash"></i>
         </button>
       </div>
@@ -78,6 +78,7 @@
           <div>
             <label class="block text-[11px] font-medium text-slate-300 mb-1">Código EAN / Referência *</label>
             <input type="text" id="codigo" required autofocus autocomplete="off" placeholder="Bipe ou digite o código..." 
+              oninput="buscarProdutoPorCodigo()"
               class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-sm">
           </div>
 
@@ -177,6 +178,13 @@
   </main>
 
   <script>
+    // Base de produtos opcional para auto-preenchimento por EAN
+    const BD_PRODUTOS = {
+      "7891010101010": "DIPIRONA SODICA 500MG C/20 CPR",
+      "7892020202020": "PARACETAMOL 750MG C/20 CPR",
+      "7893030303030": "NEOSALDINA C/30 DRG"
+    };
+
     // 1. Gerador Automático de Manifest PWA
     const manifestData = {
       name: "Saída de Mercadoria",
@@ -189,7 +197,18 @@
     };
     const stringManifest = JSON.stringify(manifestData);
     const blobManifest = new Blob([stringManifest], {type: 'application/json'});
-    document.getElementById('manifestPlaceholder').setAttribute('href', URL.createObjectURL(blobManifest));
+    const manifestLink = document.getElementById('manifestPlaceholder');
+    if (manifestLink) {
+      manifestLink.setAttribute('href', URL.createObjectURL(blobManifest));
+    }
+
+    // Restaurar Operador e Destino salvos anteriormente
+    window.addEventListener("DOMContentLoaded", () => {
+      const opSalvo = localStorage.getItem("ultimoOperador");
+      const destSalvo = localStorage.getItem("ultimoDestino");
+      if (opSalvo) document.getElementById("operador").value = opSalvo;
+      if (destSalvo) document.getElementById("destino").value = destSalvo;
+    });
 
     // 2. Banco de Dados IndexedDB Local
     let db;
@@ -207,6 +226,13 @@
       carregarRegistros();
     };
 
+    function buscarProdutoPorCodigo() {
+      const cod = document.getElementById("codigo").value.trim();
+      if (BD_PRODUTOS[cod]) {
+        document.getElementById("descricao").value = BD_PRODUTOS[cod];
+      }
+    }
+
     // 3. Suporte a Leitor de Câmera Html5Qrcode
     let html5QrCode = null;
     let cameraAtiva = false;
@@ -215,12 +241,12 @@
       const container = document.getElementById("scannerContainer");
       const btnText = document.getElementById("btnCamText");
 
-      if (cameraAtiva) {
+      if (cameraAtiva && html5QrCode) {
         html5QrCode.stop().then(() => {
           container.classList.add("hidden");
           btnText.innerText = "Ler Câmera";
           cameraAtiva = false;
-        });
+        }).catch(err => console.error(err));
       } else {
         container.classList.remove("hidden");
         btnText.innerText = "Fechar Câmera";
@@ -228,19 +254,27 @@
         
         html5QrCode.start(
           { facingMode: "environment" }, 
-          { fps: 15, qrbox: { width: 250, height: 120 } },
+          { fps: 15, qrbox: { width: 280, height: 150 } },
           (decodedText) => {
             document.getElementById("codigo").value = decodedText;
-            // Toca efeito sonoro leve ao bipar
-            let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            let osc = audioCtx.createOscillator();
-            osc.connect(audioCtx.destination);
-            osc.frequency.value = 1000;
-            osc.start();
-            osc.stop(audioCtx.currentTime + 0.1);
+            buscarProdutoPorCodigo();
+
+            // Beep de confirmação
+            try {
+              let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+              let osc = audioCtx.createOscillator();
+              osc.connect(audioCtx.destination);
+              osc.frequency.value = 1000;
+              osc.start();
+              osc.stop(audioCtx.currentTime + 0.1);
+            } catch (e) {}
             
-            alternarCamera(); // Fecha a câmera após a leitura
-            document.getElementById("descricao").focus();
+            alternarCamera();
+            if (!document.getElementById("descricao").value) {
+              document.getElementById("descricao").focus();
+            } else {
+              document.getElementById("quantidade").focus();
+            }
           },
           (errorMessage) => {}
         ).catch(err => alert("Erro ao acessar câmera Android: " + err));
@@ -253,33 +287,44 @@
     function salvarRegistro(e) {
       e.preventDefault();
 
+      const operadorNome = document.getElementById("operador").value.trim();
+      const destinoVal = document.getElementById("destino").value;
+
+      // Persiste o operador e destino para não precisar regravar
+      localStorage.setItem("ultimoOperador", operadorNome);
+      localStorage.setItem("ultimoDestino", destinoVal);
+
       const registro = {
         dataHora: new Date().toISOString(),
         dataFormatada: new Date().toLocaleTimeString("pt-BR", { hour: '2-digit', minute: '2-digit' }),
         codigo: document.getElementById("codigo").value.trim(),
         descricao: document.getElementById("descricao").value.trim(),
-        destino: document.getElementById("destino").value,
-        quantidade: parseInt(document.getElementById("quantidade").value),
+        destino: destinoVal,
+        quantidade: parseInt(document.getElementById("quantidade").value) || 1,
         lote: document.getElementById("lote").value.trim().toUpperCase() || "N/A",
-        operador: document.getElementById("operador").value.trim()
+        operador: operadorNome
       };
 
       const tx = db.transaction(["saidas"], "readwrite");
       tx.objectStore("saidas").add(registro);
 
       tx.oncomplete = function() {
-        document.getElementById("formSaida").reset();
+        document.getElementById("codigo").value = "";
+        document.getElementById("descricao").value = "";
+        document.getElementById("quantidade").value = "1";
+        document.getElementById("lote").value = "";
         document.getElementById("codigo").focus();
         carregarRegistros();
       };
     }
 
     function carregarRegistros() {
+      if (!db) return;
       const tx = db.transaction(["saidas"], "readonly");
-      const request = tx.objectStore("saidas").getAll();
+      const req = tx.objectStore("saidas").getAll();
 
-      request.onsuccess = function() {
-        const dados = request.result.reverse();
+      req.onsuccess = function() {
+        const dados = req.result.reverse();
         const tabela = document.getElementById("tabelaCorpo");
         tabela.innerHTML = "";
 
@@ -305,7 +350,7 @@
               </span>
             </td>
             <td class="py-2 px-2 text-right">
-              <button onclick="deletarRegistro(${item.id})" class="text-rose-400 p-1"><i class="fa-solid fa-xmark"></i></button>
+              <button onclick="deletarRegistro(${item.id})" class="text-rose-400 p-1 hover:text-rose-300"><i class="fa-solid fa-xmark"></i></button>
             </td>
           `;
           tabela.appendChild(tr);
@@ -341,6 +386,7 @@
     }
 
     function exportarExcel() {
+      if (!db) return;
       const tx = db.transaction(["saidas"], "readonly");
       tx.objectStore("saidas").getAll().onsuccess = function(e) {
         const dados = e.target.result;
